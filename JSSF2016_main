@@ -1,0 +1,363 @@
+from __future__ import division
+import csv
+import random
+import datetime
+import os
+import shutil
+import urllib2
+from bs4 import BeautifulSoup as bs
+import urlparse
+from os.path import basename
+from time import gmtime, strftime
+
+from Tkinter import *
+from PIL import ImageTk, Image
+
+online = False
+
+my_input = []
+
+#today = datetime.datetime.today().strftime("%Y-%m-%d")
+today = "2016-03-18"
+
+f = open('/Users/Yogi/export.csv')
+csv_f = csv.reader(f, delimiter=';')
+for row in csv_f:
+    if row[0] == today:
+        row.append([])
+        my_input.append(row)
+f.close()
+
+my_input.sort(key=lambda tup: float(tup[2]), reverse=True)
+
+f = open('/Users/Yogi/history_export.txt')
+csv_f = csv.reader(f, delimiter = '|')
+for row in csv_f:
+    if today == row[0].split()[0]:
+        for d in my_input:
+            if row[1].find('//' + d[1]) != -1 or row[1].find('www.' + d[1]) != -1:
+                d[3].append(row)
+                break
+
+print my_input
+
+all_urls = []
+for i in range(0,len(my_input)):
+    for u in my_input[i][3]:
+        if "google.com" not in u[1]:
+            all_urls.append(u)
+            #print u
+
+Questions = []
+figuresfound = 0
+numurlselected = 0
+figuresneeded = 5
+
+h = 300
+w = 800
+
+#w = int((113.5*h)/72)
+
+total_time = 0
+for m in my_input:
+    total_time = total_time + int(m[2])
+print total_time
+
+if len(my_input) >= 1:
+    m = my_input[0]
+    ques = "Did you spend more than 20% of your Internet time at " + "\n\n" + m[1] + "?"
+    ans = False
+    if ((int(m[2])/total_time) * 100) < 20:
+        ans = True
+    Questions.append(["question", ques, ans])
+    figuresneeded = figuresneeded - 1
+
+if len(my_input) >= 2:
+    m = my_input[1]
+    ques = "Did you spend more than 20% of your Internet time at " + "\n\n" + m[1] + "?"
+    ans = False
+    if ((int(m[2])/total_time) * 100) < 20:
+        ans = True
+    Questions.append(["question", ques, ans])
+    figuresneeded = figuresneeded - 1
+
+if os.path.isdir("/Users/Yogi/mygifs"):
+    for f in os.listdir("/Users/Yogi/mygifs"):
+        ff = "/Users/Yogi/mygifs/" + f
+        os.remove(ff)
+else:
+    os.makedirs("/Users/Yogi/mygifs")
+
+while len(all_urls) > 0 and numurlselected < 5 and figuresfound < 2:
+    print "in here"
+    u = all_urls[random.randrange(0,len(all_urls))]
+    url = u[1]
+    numurlselected = numurlselected + 1
+    all_urls.remove(u)
+
+    if online == False:
+        continue
+    image_links = []
+    print url
+    links = None
+    try:
+        soup = bs(urllib2.urlopen(url).read())
+        links = soup.findAll('img', src=True)
+    except:
+        print "link is not functional"
+    if links == None or len(links) == 0:
+        continue
+
+    for l in links:
+        print l['src']
+    l = links[random.randrange(0,len(links))]
+    link = urlparse.urljoin(url,l['src'])
+
+    try:
+        imgData = urllib2.urlopen(link).read()
+        fn = basename(urlparse.urlsplit(link)[2])
+        fileName = "/Users/Yogi/mygifs/" + fn
+        output = open(fileName, 'wb')
+        output.write(imgData)
+        output.close()
+        try:
+            original = Image.open(fileName)
+            s0 = original.size[0]
+            s1 = original.size[1]
+            print original.mode
+            if original.mode == "RGB": #and s0 > int(w/2) and s0 < w and s1 > int(h/3) and s1 < h:
+                figuresfound = figuresfound + 1
+                Questions.append(["image", fileName, True])
+                figuresneeded = figuresneeded - 1
+            else:
+                print "image is not RGB - skipping"
+                os.remove(fileName)
+        except e:
+            print e
+            print "downloaded image not looking good - skipping"
+    except Exception, e:
+        print 'test'
+        print e
+
+
+local_images = []
+local_images_selected = 0
+
+if online == False:
+    for f in os.listdir("/Users/Yogi/randomgifs/"):
+        local_images.append("/Users/Yogi/randomgifs/" + f)
+    random.shuffle(local_images)
+
+while figuresneeded > 0:
+    print "getting random images"
+    if online == True:
+        try:
+            imgData = urllib2.urlopen("http://lorempixel.com/400/200").read()
+            fn = basename(urlparse.urlsplit("http://lorempixel.com/400/200")[2])
+            fileName = "/Users/Yogi/mygifs/" + str(figuresneeded) + fn
+            output = open(fileName, 'wb')
+            output.write(imgData)
+            output.close()
+            figuresfound = figuresfound + 1
+            Questions.append(["image", fileName, False])
+            figuresneeded = figuresneeded - 1
+        except Exception, e:
+            print 'test'
+            print e
+    else:
+        fileName = "/Users/Yogi/mygifs/" + basename(local_images[local_images_selected])
+        shutil.copyfile(local_images[local_images_selected], fileName)
+        local_images_selected = local_images_selected + 1
+        figuresfound = figuresfound + 1
+        figuresneeded = figuresneeded - 1
+        Questions.append(["image", fileName, False])
+
+print len(Questions)
+print Questions
+random.shuffle(Questions)
+print Questions
+
+root = Tk()
+root.title("Alzheimer's Program")
+
+img = ImageTk.PhotoImage(Image.open("/Users/Yogi/welcome.png"))
+header = Label(root, image = img, height = h, width = w)
+header.image = img
+header.grid(row = 0, column = 0, columnspan = 2, sticky=S)
+questionlabel = Label(root, justify = CENTER, font = ("Times New Roman", 18))
+questionlabel.grid(row = 1,column = 0, columnspan = 2)
+blanklabel1 = Label(root, justify = CENTER)
+blanklabel1.grid(row = 2,column = 0, columnspan = 2)
+
+introquestionlabel = Label(root, text = "Have you downloaded the necessary history files? If not, please do so and try again later.", font = ("Times New Roman", 18), justify = CENTER)
+introquestionlabel.grid(row = 3,column = 0, columnspan = 2)
+blanklabel3 = Label(root, justify = CENTER)
+blanklabel3.grid(row = 4,column = 0, columnspan = 2)
+nobutton = Button(root, text='No',font=('MS', 12,'bold'))
+nobutton.grid(row = 5, column = 1, sticky = S)
+yesbutton = Button(root, text= "Yes",font=('MS', 12,'bold'))
+yesbutton.grid(row = 5, column = 0, sticky = S)
+blanklabel2 = Label(root, justify = CENTER)
+blanklabel2.grid(row = 6,column = 0, columnspan = 2)
+
+flabels = []
+for i in range(31):
+    flabels.append(Label(root, width = 24, font  = ("Times New Roman", 18)))
+
+quiz_started = False
+quiz_ended = False
+correct_answers = 0
+
+def display_question():
+    global header
+    global questionlabel
+    global introquestionlabel
+    introquestionlabel.grid_forget()
+    q = Questions[0]
+    print q
+    if q[0] == "image":
+        print "image"
+        img = ImageTk.PhotoImage(Image.open(q[1]))
+        header.config(image = img, height = h, width = w)
+        header.image = img
+        questionlabel.config(text = "Have you seen this image today?")
+    elif q[0] == "question":
+        #print "question" + q[1]
+        header.config(image = '')
+        header.config(text = q[1], height = int((h/100)*6), width = int((w/100)*11))
+        questionlabel.config(text="")
+
+
+def finalscreen():
+    print "goodbye"
+    global header
+    global questionlabel
+    global blanklabel1
+    global nobutton
+    global yesbutton
+    global blanklabel2
+    global correct_answers
+    global quiz_ended
+    global flabels
+
+    header.grid_forget()
+    questionlabel.grid_forget()
+    blanklabel1.grid_forget()
+    nobutton.grid_forget()
+    yesbutton.grid_forget()
+    blanklabel2.grid_forget()
+
+    quiz_ended = True
+    flabels[0].config(text = "Congratulations!", justify = RIGHT)
+    flabels[0].grid(row = 0, column = 0, columnspan = 2)
+    flabels[1].config(text = "Your score is " + str(correct_answers) + "/5")
+    flabels[1].grid(row = 0, column = 3, columnspan = 3)
+    flabels[2].grid(row = 1, column = 0, columnspan = 5)
+    flabels[3].config(text = "Past Scores")
+    flabels[3].grid(row = 2, column = 0, columnspan = 2)
+    flabels[4].config(text = "             ")
+    flabels[4].grid(row = 2, column = 2, columnspan = 1)
+    flabels[5].config(text = "Today's Most Visited Domains")
+    flabels[5].grid(row = 2, column = 3, columnspan = 2)
+    for i in range(6,11):
+        flabels[i].config(text = "             ")
+        flabels[i].grid(row = int(i-3), column = 2, columnspan = 1)
+    num = len(my_input)
+    num_domains = 0
+    domains = []
+    if num > 5:
+        num = 5
+    while num > 0:
+        domains.append([my_input[num_domains][1], my_input[num_domains][2]])
+        num_domains = num_domains + 1
+        num = num - 1
+    while num_domains < 5:
+        domains.append(['',''])
+        num_domains = num_domains + 1
+
+    for i in range(0,5):
+        flabels[i + 11].config(text = domains[i][0], relief = RIDGE)
+        flabels[i + 11].grid(row = int(i+3), column = 3)
+
+        flabels[i + 16].config(text = domains[i][1], relief = RIDGE)
+        flabels[i + 16].grid(row = int(i+3), column = 4) # make it hours/minutes instead of seconds
+
+    num = 0
+    test_hist = []
+    if os.path.isfile('/Users/Yogi/jssf2016input/test_history.csv'):
+        f = open('/Users/Yogi/jssf2016input/test_history.csv')
+        csv_f = csv.reader(f, delimiter=',')
+        for row in csv_f:
+            test_hist.append(row)
+            num = num + 1
+            if num == 5:
+                break
+        f.close()
+    while num < 5:
+        test_hist.append(['',''])
+        num = num + 1
+
+    for i in range(0,5):
+        flabels[i + 21].config(text = test_hist[i][0], relief = RIDGE)
+        flabels[i + 21].grid(row = int(i+3), column = 0)
+
+        flabels[i + 26].config(text = test_hist[i][1], relief = RIDGE)
+        flabels[i + 26].grid(row = int(i+3), column = 1)
+
+    if not os.path.isdir('/Users/Yogi/jssf2016input'):
+        os.mkdir('/Users/Yogi/jssf2016input')
+
+    current_time = strftime("%Y-%m-%d %H:%M:%S")
+    new_hist = [[current_time, str(correct_answers) + "/5"]] + test_hist[0:4]
+    with open('/Users/Yogi/jssf2016input/test_history.csv', "wb") as csv_file:
+        writer = csv.writer(csv_file, delimiter = ",")
+        for line in new_hist:
+            if line[0] != '':
+                writer.writerow(line)
+
+
+def nextquestion():
+    if len(Questions) == 0:
+        finalscreen()
+        return
+    else:
+        display_question()
+
+def checkanswer(answer):
+    global correct_answers
+    q = Questions[0]
+    if q[2] == answer:
+        correct_answers = correct_answers + 1
+    Questions.remove(Questions[0])
+
+
+def nocmd(event = None):
+    global quiz_started
+    global quiz_ended
+    print "no"
+    if quiz_ended == True:
+        return
+    if quiz_started == False:
+        print "Please try again later when you have collected the data"
+        exit(1)
+    else:
+        checkanswer(False)
+        nextquestion()
+
+def yescmd(event = None):
+    global quiz_started
+    global quiz_ended
+    if quiz_ended == True:
+        exit(0)
+    if quiz_started == False:
+        quiz_started = True
+        nextquestion()
+    else:
+        checkanswer(True)
+        nextquestion()
+
+nobutton.config(command = nocmd)
+yesbutton.config(command = yescmd)
+
+
+root.mainloop()
